@@ -5,7 +5,7 @@ import Profile from './Profile';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { io } from 'socket.io-client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
 import { toast } from 'sonner';
 import {
@@ -14,6 +14,7 @@ import {
   LogOut,
   User as UserIcon,
   ChevronDown,
+  Bell,
 } from 'lucide-react';
 
 const socket = io('http://localhost:3000');
@@ -32,30 +33,28 @@ const getInitials = (name: string) => {
 export default function Dashboard() {
   const [filterStatus, setFilterStatus] = useState('');
   const [filterPriority, setFilterPriority] = useState('');
-
   const [view, setView] = useState<'all' | 'mine' | 'created' | 'overdue'>(
     'all'
   );
+
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
 
   const { user, logout } = useAuth();
+  const queryClient = useQueryClient();
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: any) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setIsDropdownOpen(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  const notifDropdownRef = useRef<HTMLDivElement>(null);
 
   const { data: users = [] } = useQuery({
     queryKey: ['users'],
     queryFn: async () => (await api.get('/users')).data,
+  });
+
+  const { data: notifications = [] } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: async () => (await api.get('/notifications')).data,
+    refetchInterval: 60000,
   });
 
   const { tasks, isLoading } = useTasks({
@@ -63,7 +62,33 @@ export default function Dashboard() {
     priority: filterPriority,
   });
 
-  // Filter Logic
+  const markAsRead = async (id: string) => {
+    try {
+      await api.patch(`/notifications/${id}/read`);
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    } catch (e) {
+      console.error('Failed to mark read');
+    }
+  };
+
+  const unreadCount = notifications.filter((n: any) => !n.isRead).length;
+
+  useEffect(() => {
+    function handleClickOutside(event: any) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+      if (
+        notifDropdownRef.current &&
+        !notifDropdownRef.current.contains(event.target)
+      ) {
+        setShowNotifDropdown(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const filteredTasks = tasks?.filter((task: any) => {
     const currentUserId = user?._id || user?.id;
     if (!currentUserId) return false;
@@ -84,19 +109,38 @@ export default function Dashboard() {
     return true;
   });
 
+  // Real-time Listeners
   useEffect(() => {
+    const refreshTasks = () =>
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+
+    socket.on('taskCreated', refreshTasks);
+    socket.on('taskUpdated', refreshTasks);
+    socket.on('taskDeleted', refreshTasks);
+
     socket.on(
       'notification',
       (payload: { userId: string; message: string }) => {
-        if (payload.userId === user?.id) {
-          toast.info('New Assignment', { description: payload.message });
+        const currentUserId = user?._id || user?.id;
+
+        if (currentUserId === payload.userId) {
+          toast.info('New Assignment', {
+            description: payload.message,
+            duration: 5000,
+          });
+
+          queryClient.invalidateQueries({ queryKey: ['notifications'] });
         }
       }
     );
+
     return () => {
+      socket.off('taskCreated');
+      socket.off('taskUpdated');
+      socket.off('taskDeleted');
       socket.off('notification');
     };
-  }, [user]);
+  }, [user, queryClient]);
 
   return (
     <div className="min-h-screen bg-[#f8fafc]">
@@ -124,6 +168,74 @@ export default function Dashboard() {
                 New Task
               </Link>
             )}
+
+            <div className="relative" ref={notifDropdownRef}>
+              <button
+                onClick={() => setShowNotifDropdown(!showNotifDropdown)}
+                className="p-2 text-gray-600 hover:bg-gray-100 rounded-full relative transition-colors"
+              >
+                <Bell size={20} />
+                {unreadCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-red-500 border-2 border-white rounded-full"></span>
+                )}
+              </button>
+
+              {showNotifDropdown && (
+                <div className="absolute right-0 mt-3 w-80 bg-white rounded-xl shadow-2xl border border-gray-100 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
+                  <div className="p-3 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
+                    <h3 className="text-sm font-semibold text-gray-900">
+                      Notifications
+                    </h3>
+                    <span className="text-xs text-gray-500">
+                      {unreadCount} unread
+                    </span>
+                  </div>
+
+                  <div className="max-h-80 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <div className="p-8 text-center text-gray-400 text-sm">
+                        No notifications
+                      </div>
+                    ) : (
+                      notifications.map((notif: any) => (
+                        <div
+                          key={notif._id}
+                          onClick={() => markAsRead(notif._id)}
+                          className={`p-4 border-b border-gray-50 hover:bg-blue-50/50 cursor-pointer transition-colors flex gap-3 ${
+                            !notif.isRead ? 'bg-blue-50/30' : ''
+                          }`}
+                        >
+                          <div
+                            className={`mt-1.5 w-2 h-2 rounded-full shrink-0 ${
+                              !notif.isRead ? 'bg-blue-600' : 'bg-transparent'
+                            }`}
+                          />
+                          <div>
+                            <p
+                              className={`text-sm ${
+                                !notif.isRead
+                                  ? 'font-semibold text-gray-800'
+                                  : 'text-gray-600'
+                              }`}
+                            >
+                              {notif.message}
+                            </p>
+                            <p className="text-[10px] text-gray-400 mt-1">
+                              {new Date(notif.createdAt).toLocaleDateString()}{' '}
+                              at{' '}
+                              {new Date(notif.createdAt).toLocaleTimeString(
+                                [],
+                                { hour: '2-digit', minute: '2-digit' }
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="h-6 w-px bg-gray-200"></div>
 
