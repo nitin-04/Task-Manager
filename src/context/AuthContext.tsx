@@ -8,6 +8,7 @@ import {
 
 interface User {
   id: string;
+  _id?: string;
   name: string;
   email: string;
 }
@@ -17,13 +18,19 @@ interface AuthContextType {
   token: string | null;
   login: (token: string, user: User) => void;
   logout: () => void;
+  updateUser: (user: User) => void;
   isAuthenticated: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
-  const [user, setUser] = useState<User | null>(null);
+  // Initialize from LocalStorage
+  const [user, setUser] = useState<User | null>(() => {
+    const storedUser = localStorage.getItem('user');
+    return storedUser ? JSON.parse(storedUser) : null;
+  });
+
   const [token, setToken] = useState<string | null>(
     localStorage.getItem('token')
   );
@@ -40,7 +47,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setToken(newToken);
     setUser(newUser);
     localStorage.setItem('token', newToken);
-
     localStorage.setItem('user', JSON.stringify(newUser));
   };
 
@@ -51,9 +57,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem('user');
   };
 
+  const updateUser = (updatedUser: User) => {
+    setUser(updatedUser);
+    localStorage.setItem('user', JSON.stringify(updatedUser));
+  };
+
   return (
     <AuthContext.Provider
-      value={{ user, token, login, logout, isAuthenticated: !!token }}
+      value={{
+        user,
+        token,
+        login,
+        logout,
+        updateUser,
+        isAuthenticated: !!token,
+      }}
     >
       {children}
     </AuthContext.Provider>

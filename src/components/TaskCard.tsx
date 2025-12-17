@@ -15,9 +15,15 @@ const statusColors: Record<string, string> = {
   Completed: 'bg-green-50 text-green-600 hover:bg-green-100',
 };
 
-export default function TaskCard({ task }: { task: any }) {
+export default function TaskCard({ task, users }: { task: any; users: any[] }) {
   const updateTask = useUpdateTask();
   const deleteTask = useDeleteTask();
+  // console.log(task);
+
+  const assignees = users.filter((u) => task.assignedTo?.includes(u._id));
+  // console.log('a', assignees);
+
+  const creator = users.find((u) => u._id === task.creatorId);
 
   const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     e.preventDefault();
@@ -54,10 +60,9 @@ export default function TaskCard({ task }: { task: any }) {
             <option value="In Progress">In Progress</option>
             <option value="Completed">Completed</option>
           </select>
-
           <ChevronDown
             size={14}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-current pointer-events-none opacity-60 group-hover/select:opacity-100 transition-opacity"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-current pointer-events-none opacity-60"
           />
         </div>
       </div>
@@ -73,27 +78,55 @@ export default function TaskCard({ task }: { task: any }) {
         )}
       </div>
 
-      <div className="flex items-center justify-between pt-4 border-t border-gray-50 mt-auto">
-        <div
-          className={`flex items-center gap-1.5 text-xs font-medium ${
-            task.dueDate ? 'text-gray-500' : 'text-gray-300'
-          }`}
-        >
-          <Calendar size={14} />
-          <span>
-            {task.dueDate
-              ? format(new Date(task.dueDate), 'MMM d, yyyy')
-              : 'No Due Date'}
+      <div className="flex flex-col gap-7 mt-auto pt-4 border-t border-gray-50">
+        <div className="flex flex-col gap-1 min-h-6">
+          <span className="text-xs font-medium text-gray-400">Assigned:</span>
+
+          {assignees.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5 mt-0.5">
+              {assignees.map((u) => (
+                <span
+                  key={u._id}
+                  className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-[#caf0f8] text-[#343a40] border border-blue-100"
+                >
+                  {u.name}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <span className="text-xs text-gray-300 italic">Unassigned</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 text-xs text-gray-500">
+          <span className="font-medium text-gray-400">Created by:</span>
+          <span className="text-gray-600 bg-[#dee2e6] font-bold px-2 py-0.5 rounded">
+            {creator ? creator.name : 'Unknown'}
           </span>
         </div>
 
-        <button
-          onClick={handleDelete}
-          className="text-gray-400 hover:text-red-600 hover:bg-red-50 p-1.5 rounded-md transition-all opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0"
-          title="Delete Task"
-        >
-          <Trash2 size={16} />
-        </button>
+        <div className="flex justify-between items-end mt-2">
+          <div className="flex flex-col gap-1">
+            <div
+              className={`flex items-center gap-1.5 text-xs font-medium ${
+                task.dueDate ? 'text-gray-500' : 'text-gray-300'
+              }`}
+            >
+              <Calendar size={12} />
+              <span>
+                {task.dueDate
+                  ? format(new Date(task.dueDate), 'MMM d')
+                  : 'No Due Date'}
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={handleDelete}
+            className="text-gray-300 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
       </div>
 
       <div

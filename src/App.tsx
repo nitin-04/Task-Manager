@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import CreateTask from './pages/CreateTask';
 import type { JSX } from 'react';
+import Profile from './pages/Profile';
 
 const queryClient = new QueryClient();
 
@@ -44,6 +45,14 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <Profile />
                 </ProtectedRoute>
               }
             />
